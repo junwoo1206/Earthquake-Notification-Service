@@ -1,0 +1,109 @@
+service: demo-serverless-earthquake-alarm
+app: demo-serverless-earthquake-alarm
+package:
+  patterns:
+    - '!node_modules/chrome-aws-lambda/**'
+    - '!node_modules/puppeteer/.local-chromium/**'
+provider:
+  name: aws
+  runtime: nodejs12.x
+  iam:
+    role: DefaultRole
+  endpointType: REGIONAL
+  stage: ${opt:stage, "dev"}
+  versionFunctions: false
+  region: ap-northeast-2
+  stackName: ${self:app}-serverless
+  timeout: 100
+  environment:
+    app_name: demo-serverless-alarm
+    app: ${self:app}
+    PhoneNumber: "821087253717"
+  deploymentBucket:
+    name: ${aws:accountId}-${self:app}-deploys
+    maxPreviousDeploymentArtifacts: 5
+    blockPublicAccess: true
+  deploymentPrefix: ${self:app}
+plugins:
+  - serverless-deployment-bucket
+  - serverless-plugin-split-stacks
+  - serverless-plugin-aws-alerts
+  - serverless-cloudformation-sub-variables
+resources:
+  Resources:
+    dataTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: data-record
+        AttributeDefinitions:
+          - AttributeName: board_name
+            AttributeType: S
+        KeySchema:
+          - AttributeName: board_name
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+    DefaultRole:
+      Type: AWS::IAM::Role
+      Properties:
+        RoleName: >-
+          ${self:app}-DefaultLambdaExcutionRole
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service:
+                  - lambda.amazonaws.com
+              Action: sts:AssumeRole
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+          - arn:aws:iam::aws:policy/CloudWatchFullAccess         
+          
+        # Policies:
+        #   - PolicyName: myPolicyName
+        #     PolicyDocument:
+        #       Version: '2012-10-17'
+        #       Statement:
+        #         - Effect: Allow
+        #           Action:
+        #           Resource: '*'
+    Cron15minLambdaPermissions:
+      Type: AWS::Lambda::Permission
+      Properties:
+        Action: lambda:InvokeFunction
+        FunctionName:
+          Fn::GetAtt:
+            - TesterLambdaFunction
+            - Arn
+        Principal: events.amazonaws.com
+    Cron15minJob:
+      Type: AWS::Events::Rule
+      Properties:
+        ScheduleExpression: cron(0/5 0-14 ? * * *)
+        State: ENABLED
+        Targets:
+          - Arn:
+              Fn::GetAtt:
+                - TesterLambdaFunction
+                - Arn
+            Id:
+              Ref: TesterLambdaFunction
+custom:
+  splitStacks:
+    nestedStackCount: 10
+    perFunction: false
+    perType: false
+    perGroupFunction: true
+functions:
+  tester:
+    name: ${self:app}_tester
+    handler: src/lambda/tester.handler
+    memorySize: 1024
+    timeout: 30
+    events:
+      - http:
+          path: tester
+          method: get
+          cors: true
+    layers:
+      - arn:aws:lambda:ap-northeast-2:764866452798:layer:chrome-aws-lambda:25

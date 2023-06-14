@@ -1,0 +1,12 @@
+service: ui-test
+provider:
+  name: aws
+  runtime: nodejs14.x
+  memorySize: 512
+  timeout: 30
+  region: ap-northeast-2
+  environment:
+    PhoneNumber: "821027331562"
+functions:
+  tester:
+    handler: src/lambda/tester.handler
